@@ -12,8 +12,8 @@ def _():
 
 
 @app.cell
-async def _(micropip):
-    await micropip.install("authors", keep_going=True)
+def _():
+    #await micropip.install("authors", keep_going=True)
     import authors
     return (authors,)
 
@@ -94,8 +94,13 @@ def _(
 
 
 @app.cell
-def _(authors, get_table_selection, mo):
-    all_known_authors = authors.authors.get_all_known_authors()
+def _(authors, mo):
+    get_all_known_authors, set_all_known_authors = mo.state(authors.authors.get_all_known_authors())
+    return get_all_known_authors, set_all_known_authors
+
+
+@app.cell
+def _(get_all_known_authors, get_table_selection, mo):
     table = mo.ui.table(
         [
             {
@@ -103,11 +108,11 @@ def _(authors, get_table_selection, mo):
                 'Affiliations': v['affiliations'],
                 'ORCID': v.get('orcid', '-')
             } 
-            for k, v in all_known_authors.items()
+            for k, v in get_all_known_authors().items()
         ], 
         label="All Known Authors:", pagination=True, show_download=False, on_change=get_table_selection)
     table
-    return all_known_authors, table
+    return (table,)
 
 
 @app.cell
@@ -117,20 +122,24 @@ def _(set_input):
     return (get_table_selection,)
 
 
-@app.cell
-def _():
+@app.cell(hide_code=True)
+def _(authors, set_all_known_authors):
     def validate_new_author(v):
         if v['name'] == '':
             return 'Author name cannot be empty'
         if v['affil'] == '':
             return 'At least one affiliation must be defined'
+        if v['orcid'] != '' and len(v['orcid']) != 19:
+            return 'ORCID must be of the form XXXX-XXXX-XXXX-XXXX'
+
     def on_new_author(v):
-        print(v)
+        authors.register_author(v['name'], v['affil'].split('\n'), orcid=v['orcid'])
+        set_all_known_authors(authors.authors.get_all_known_authors())
     return on_new_author, validate_new_author
 
 
 @app.cell(hide_code=True)
-def _():
+def _(authors, set_all_known_authors):
     def validate_update_author_name(v):
         if v['old_name'] == '':
             return 'Old author name cannot be empty'
@@ -138,9 +147,39 @@ def _():
             return 'New author name cannot be empty'
         if v['old_name'] == v['new_name']:
             return 'Old author name is equal to new author name'
+
     def on_update_author_name(v):
-        print(v)
+        authors.update_author_name(v['old_name'], v['new_name'])
+        set_all_known_authors(authors.authors.get_all_known_authors())
     return on_update_author_name, validate_update_author_name
+
+
+@app.cell(hide_code=True)
+def _(authors, set_all_known_authors):
+    def validate_update_author_affiliations(v):
+        if v['name'] == '':
+            return 'Author name cannot be empty'
+        if v['affil'] == '':
+            return 'At least one affiliation must be defined'
+
+    def on_update_author_affiliations(v):
+        authors.update_author_affiliations(v['name'], v['affil'].split('\n'))
+        set_all_known_authors(authors.authors.get_all_known_authors())
+    return on_update_author_affiliations, validate_update_author_affiliations
+
+
+@app.cell(hide_code=True)
+def _(authors, set_all_known_authors):
+    def validate_update_author_orcid(v):
+        if v['name'] == '':
+            return 'Author name cannot be empty'
+        if v['orcid'] != '' and len(v['orcid']) != 19:
+            return 'ORCID must be of the form XXXX-XXXX-XXXX-XXXX'
+
+    def on_update_author_orcid(v):
+        authors.update_author_orcid(v['name'], v['orcid'])
+        set_all_known_authors(authors.authors.get_all_known_authors())
+    return on_update_author_orcid, validate_update_author_orcid
 
 
 @app.cell
@@ -188,7 +227,7 @@ def _(
         .batch(
             name = mo.ui.text(label="Author name: ", full_width=True),
             affil = mo.ui.text_area(label="Affiliations (one per line): ", full_width=True),
-            add_replace = mo.ui.radio(options=['Add', 'Replace'], inline=True, label='Strategy:&nbsp;')
+            add_replace = mo.ui.radio(options=['Add', 'Replace'], value='Replace', inline=True, label='Strategy:&nbsp;')
         )
         .form(show_clear_button=True, clear_on_submit=True, bordered=True)
     )
@@ -230,6 +269,11 @@ def _(authors, get_input, mo):
 
     pdfs
     return Path, a, pdf_aanda, pdf_mnras, pdfs
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
